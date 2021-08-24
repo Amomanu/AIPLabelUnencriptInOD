@@ -1,0 +1,87 @@
+Import-Module SharePointPnPPowerShellOnline
+Import-Module Microsoft.Online.SharePoint.PowerShell
+$O365Cred=get-Credential
+Connect-SpoService -Url https://m365x536586-admin.sharepoint.com -Credential $O365Cred             #Update Admin site
+$logpath="C:\Teamsscripts\AIP\logfile.txt" 
+$UPN="admin@M365x536586.onmicrosoft.com"     #User to add SiteCollectionAdministrator
+
+$csvFile = "C:\Teamsscripts\AIP\SiteURL.csv"              #Update CSV Path
+$table = Import-Csv $csvFile -Delimiter ","
+$FolderURL= "/Documents"
+
+foreach ($row in $table)                                  #Parses CSV for SiteURL
+{$startDate=Get-Date
+$SiteURL = $row."Site Address"
+$zt="Started "+$SiteURL+" at "+$startDate
+Write-Host $zt 
+Add-Content -Path $logpath -Value $zt 
+  
+Connect-pnpOnline -Url $SiteURL -Credentials $O365Cred 
+
+try{
+Set-SPOUser -Site $SiteURL -LoginName $UPN -IsSiteCollectionAdmin $true     #Adds UPN user as site collection admin
+Write-Host "Added admin as site collection admin to $SiteURL"
+Add-Content -Path $logpath -Value "Added admin as site collection admin to $SiteURL"
+}
+catch{}
+
+#Unlock \Documents folder
+$FolderItems = Get-PnPFolderItem -FolderSiteRelativeUrl $FolderURL -ItemType File
+ForEach ($Item in $FolderItems) {
+     $fold=$FolderUrl.TrimStart("/")
+     $ItemPath = $SiteUrl+$fold+"/"+$Item.Name
+     Add-Content -Path $logpath -Value $ItemPath
+     try{
+     Unlock-SPOSensitivityLabelEncryptedFile -FileUrl $ItemPath -JustificationText "Administrator removed label"
+     Write-Host "Unlocking" $ItemPath
+     }
+     catch{}
+}
+ 
+# Loop through to get all the folders and subfolders  
+Function GetFolders($folderUrl)  
+{      
+    $folderColl=Get-PnPFolderItem -FolderSiteRelativeUrl $folderUrl -ItemType Folder   
+    # Loop through the folders  
+    foreach($folder in $folderColl)  
+    {                      
+       $newFolderURL= $folderUrl+"/"+$folder.Name  
+       $siteu=$SiteURL.trimend("/")  
+       #write-host -ForegroundColor Green $folder.Name " - " $newFolderURL  
+       $sz=$siteu + $newFolderURL | Out-string        #Hosts the FolderURL to be used to get files in
+       $sz=$sz.trimend(" 
+")
+       $nfu=$newFolderURL
+       #$nfu='"'+$nfu+'"'|Out-string
+       $nfu=$nfu.trimend("
+
+       ")
+       #write-host $nfu
+       #write-host $sz
+       #echo '1'
+       $FolderItems = Get-PnPFolderItem -FolderSiteRelativeUrl "$nfu" -ItemType File 
+       ForEach ($Item in $FolderItems)     #Loop through files
+       {$ItemName=$Item.Name|Out-string
+        $ItemPath="$sz/$ItemName"
+        #$ItemPath
+        try
+        {Unlock-SPOSensitivityLabelEncryptedFile -FileUrl "$ItemPath" -JustificationText "Administrator removed label"
+        Write-Host "Unlocking" $Item.Name
+	    Add-Content -Path $logpath -Value $ItemPath
+        }
+        catch{}
+
+       }
+       # Call the function to get the folders inside folder  
+       GetFolders($newFolderURL)  
+    }           
+}  
+
+GetFolders($folder)
+$endDate=get-date  
+$ft= "finished "+$SiteURL+" at "+$endDate 
+Write-Host $ft
+Add-Content -Path $logpath -Value $ft
+}
+
+ 

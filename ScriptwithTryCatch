@@ -1,0 +1,59 @@
+$path= 'C:\temp\logs.txt'
+$failedpath='C:\temp\failedlogs.txt'
+$null> $path
+$null>$failedpath
+$csvFile = "C:\temp\dnbtest.csv"
+$table = Import-Csv $csvFile -Delimiter ","
+$SiteURL="https://m365x536586-admin.sharepoint.com/"
+
+
+
+Connect-PnPOnline -Url $SiteURL 
+Connect-SPOService -Url $SiteURL
+$startTime=get-date
+Add-Content -Value ('Started At' + $startTime) -Path $path
+foreach ($row in $table)
+{       try{ 
+            Unlock-SPOSensitivityLabelEncryptedFile -FileUrl $row.Link -JustificationText "Administrator removed label"
+            Add-Content -Value ('UnlockedDataForFile'+$row.Link) -Path $path
+            }catch{
+                # Convert common exception messages into human understandable form
+                if ($_.Exception.Message.contains("ResourceBudgetExceeded"))
+                    {Start-Sleep -Seconds 60
+                        try{
+                            Unlock-SPOSensitivityLabelEncryptedFile -FileUrl $row.Link -JustificationText "Administrator removed label"
+                            Add-Content -Value ('UnlockedDataForFile'+$row.Link) -Path $path
+                            }catch{
+                                    # Convert common exception messages into human understandable form
+                                    if ($_.Exception.Message.contains("ResourceBudgetExceeded"))
+                                        {Add-Content -Value ('UnlockedDataForFile'+$row.Link+'failed. Throtteling!') -Path $failedpath
+                                        }
+                                    }
+                     } 
+                 elseif($_.Exception.Message.contains("User cannot be found"))           
+                        {$errMessage = "User URL not found or permissions missing."
+                         Add-Content -Value ('UnlockedDataForFile'+$row.Link+'failed. User URL not found or permissions missing!') -Path $failedpath
+                            }  
+                 elseif($_.Exception.Message.contains("primaryStream.GetZipStorage"))
+                        {$errMessage = ('Can not unencrypt archieves!')
+                        Add-Content -Value ('UnlockedDataForFile'+$row.Link+'failed. Can not unencrypt archieves!') -Path $failedpath
+                        }
+                 elseif($_.Exception.Message.contains("MSIP.AIPFile.SetTags/Commit(fileStorage) failed with APIException"))
+                 {Start-Sleep -Seconds 60
+                        try{
+                            Unlock-SPOSensitivityLabelEncryptedFile -FileUrl $row.Link -JustificationText "Administrator removed label"
+                            Add-Content -Value ('UnlockedDataForFile'+$row.Link) -Path $path
+                            }catch{
+                                    # Convert common exception messages into human understandable form
+                                    if ($_.Exception.Message.contains("MSIP.AIPFile.SetTags/Commit(fileStorage) failed with APIException"))
+                                        {Add-Content -Value ('UnlockedDataForFile'+$row.Link+'failed. Throtteling!') -Path $failedpath
+                                        }
+                                    }
+                     } 
+
+
+            }
+        
+}
+$finishTime=get-date
+Add-Content -Value ('Finished At' + $finishTime) -Path $path
